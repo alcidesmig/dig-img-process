@@ -90,7 +90,6 @@ def laplacian_pyramid(img, pyramid_size, gauss_filter_order=0):
     # Layer 0 da pir. Laplaciana = interpolacao da layer 0 da pir. Gaussiana - layer 1 da pir. Gaussiana
     for i in range(pyramid_size):
         interpolated_img = upsample_2x(gauss_pyr[i], interpolation_filter)
-        plt.imshow(interpolated_img)
         # Alteração: remove última linha e última coluna da imagem da pirâmide Gaussiana para seguir padrão de tamanho
         laplacian_layer = gauss_pyr[i + 1][:-1, :-1] - interpolated_img
         pyramid.append(laplacian_layer)
