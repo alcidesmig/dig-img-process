@@ -7,6 +7,8 @@ Função para aplicar um filtro gaussiano e
 diminuir o tamanho de uma imagem
 - função disponibilizada pelo professor e editada
 '''
+
+
 def down_size(img):
 
     # Definindo filtro gaussiano
@@ -36,10 +38,13 @@ def down_size(img):
 
     return new_img
 
+
 '''
 Função para fazer a interpolação de uma imagem utilizando um determinado filtro
 - função disponibilizada pelo professor e editada
 '''
+
+
 def upsample_2x(img, filtro):
     num_rows, num_cols = img.shape
     img_upsampled = np.zeros([2*num_rows-1, 2*num_cols-1])
@@ -74,23 +79,30 @@ def laplacian_pyramid(img, pyramid_size, gauss_filter_order=0):
     interpolation_filter = np.zeros([7, 7])
     interpolation_filter[2:4, 2:4] = 1
     for i in range(gauss_filter_order):
-        interpolation_filter = correlate(interpolation_filter, interpolation_filter, mode='same')
+        interpolation_filter = correlate(
+            interpolation_filter, interpolation_filter, mode='same')
 
+    if gauss_filter_order:
+        interpolation_filter /= 4
     pyramid = []
 
     # Gera a pirâmide Laplaciana a partir da pirâmida Gaussiana
     # Layer 0 da pir. Laplaciana = interpolacao da layer 0 da pir. Gaussiana - layer 1 da pir. Gaussiana
     for i in range(pyramid_size):
         interpolated_img = upsample_2x(gauss_pyr[i], interpolation_filter)
+        plt.imshow(interpolated_img)
         # Alteração: remove última linha e última coluna da imagem da pirâmide Gaussiana para seguir padrão de tamanho
         laplacian_layer = gauss_pyr[i + 1][:-1, :-1] - interpolated_img
         pyramid.append(laplacian_layer)
 
     return pyramid
 
+
 '''
 Função para plotar todas as layers da pirâmide
 '''
+
+
 def show_pyramid(pyramid):
     fig = plt.figure()
     size = len(pyramid)
@@ -104,7 +116,5 @@ def show_pyramid(pyramid):
 
 if __name__ == '__main__':
     img = plt.imread('cameraman.tiff')
-    laplacian_pyr = laplacian_pyramid(img, 4, gauss_filter_order=1)
+    laplacian_pyr = laplacian_pyramid(img, 4, gauss_filter_order=0)
     show_pyramid(laplacian_pyr)
-
-
