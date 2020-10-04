@@ -1,119 +1,178 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import convolve, correlate
+from scipy.signal import convolve
+from scipy.signal import correlate
 
-'''
-Função para aplicar um filtro gaussiano e
-diminuir o tamanho de uma imagem
-- função disponibilizada pelo professor e editada
-'''
+# Decorator para imagens coloridas
+def support_rgba(parameter_type):
+    if type(parameter_type) == int:
+        n_images = parameter_type
+        if parameter_type <= 0:
+            raise Exception(f'parameter_type isn\'t a "int > 0" nor a "list"')
+    elif not parameter_type == list:
+        raise Exception(f'parameter_type isn\'t a "int > 0" nor a "list"')
 
+    def inner(f):
+        def wrapper(*args, **kwargs):
+            # Separa as imagens e os argumentos
+            if type(parameter_type) == int:
+                images = args[:n_images]
+                args = args[n_images:]
+            elif parameter_type == list:
+                images = args[0]
+                args = args[1:]
 
-def down_size(img):
+            # Tamanho do shape de uma imagem
+            shape_len = len(images[0].shape)
 
-    # Definindo filtro gaussiano
-    gauss_filter = np.array([
-        [1,  4, 6,  4,  1],
+            # Caso tenha mais de um canal
+            if shape_len == 3:
+                _, _, dim = images[0].shape
+                
+                # Separa os canais
+                split_channel = lambda img : [img[:, :, i] for i in range(dim)]
+                # Separa os canais
+                images_channels = map(split_channel, images)
+                # Aplica a função em cada canal
+                if type(parameter_type) == int:
+                    processed_channels = [f(*channels, *args, **kwargs) for channels in zip(*images_channels)]
+                elif parameter_type == list:
+                    processed_channels = [f(channels, *args, **kwargs) for channels in zip(*images_channels)]
+                
+                # Imagem final, com as dimenções do output
+                w, h = processed_channels[0].shape
+                final_img = np.zeros([w, h, dim], dtype=np.uint32)
+
+                # Atribui os canais à imagem final
+                for i in range(dim):
+                    final_img[:, :, i] = processed_channels[i]
+                
+                return final_img
+
+            # Caso tenha apenas um canal
+            elif shape_len == 2:
+                if type(parameter_type) == int:
+                    processed_img = f(*images, *args, **kwargs)
+                elif parameter_type == list:
+                    processed_img = f(images, *args, **kwargs)
+
+                return processed_img
+            else:
+                raise Exception(f'Object does not have the right amount of dimensions: {images[0].shape}')
+
+        return wrapper
+    return inner
+
+@support_rgba(1)
+def downsample(img):
+    '''Gera uma nova imagem com metade do tamanho da imagem de entrada. A imagem de
+       entrada é suavizada utilizando um filtro gaussiano e amostrada a cada 2 pixels'''
+    # Filtro gaussiano
+    
+    filtro = np.array([
+        [1,  4,  6,  4, 1],
         [4, 16, 24, 16, 4],
         [6, 24, 36, 24, 6],
         [4, 16, 24, 16, 4],
         [1,  4,  6,  4, 1]
-    ]) / 256
-
+    ])/256.
+    
     img = img.astype(float)
     n_rows, n_cols = img.shape
 
-    half_rows = (n_rows + 1) // 2
-    half_cols = (n_cols + 1) // 2
-
+    half_rows = (n_rows+1)//2
+    half_cols = (n_cols+1)//2
+    
     # Faz a convolução da imagem com o filtro gaussiano
-    img_convolved = convolve(img, gauss_filter, mode='same')
+    img_smooth = convolve(img, filtro, mode='same')
     # Define uma matriz de zeros para a nova imagem
-    new_img = np.zeros([half_rows, half_cols])
+    img_down = np.zeros([half_rows, half_cols])
+    
+    for row in range(0, half_rows):
+        for col in range(half_cols):
+            img_down[row, col] = img_smooth[2*row, 2*col]
+            
+    return img_down
 
-    # Preenche a nova imagem fazendo uma amostragem da imagem original a cada 2px
-    for i in range(half_rows):
-        for j in range(half_cols):
-            new_img[i, j] = img_convolved[2*i, 2*j]
+@support_rgba(1)
+def upsample_2x(img, filtro='vizinho'):
+    '''Interpola imagem utilizando o filtro fornecido na variável filtro'''
+    
+    # Calculo dos filtros
+    _w = np.zeros([7,7])
+    _w[2:4,2:4] = 1
+    _w2 = correlate(_w, _w, mode='same')
+    _w2 = _w2/4
+    _w3 = correlate(_w2, _w2, mode='same')
+    _w3 = _w3/4
+    _w_c = np.array([[-0.0625, 0, 0.5625, 1, 0.5625, 0, -0.0625]])
+    _w_c2d = np.dot(_w_c.T, _w_c)
 
-    return new_img
+    _filtros = {
+        'vizinho'   : _w,
+        'cone'      : _w2,
+        'corr_cone' : _w3,
+        'bicubica'  : _w_c2d
+    }
 
+    if type(filtro) == str:
+        filtro = _filtros[filtro]
 
-'''
-Função para fazer a interpolação de uma imagem utilizando um determinado filtro
-- função disponibilizada pelo professor e editada
-'''
+    n_rows, n_cols = img.shape
+    
+    # Define uma matriz de zeros para a nova imagem
+    img_up = np.zeros([2*n_rows-1, 2*n_cols-1])
+    
+    for row in range(n_rows-1):
+        for col in range(n_cols-1):
+            img_up[2*row, 2*col] = img[row, col]
+    img_up[-1,::-2] = img[-1]
+    img_up[::2,-1] = img[:,-1]
 
+    img_interp = correlate(img_up, filtro, mode='same')
+    
+    return img_interp
 
-def upsample_2x(img, filtro):
-    num_rows, num_cols = img.shape
-    img_upsampled = np.zeros([2*num_rows-1, 2*num_cols-1])
-    for row in range(num_rows-1):
-        for col in range(num_cols-1):
-            img_upsampled[2*row, 2*col] = img[row, col]
-    img_upsampled[-1, ::-2] = img[-1]
-    img_upsampled[::2, -1] = img[:, -1]
+@support_rgba(2)
+def image_difference(img_a, img_b):
+    wa, ha = img_a.shape
+    wb, hb = img_b.shape
+    w = min(wa, wb)
+    h = min(ha, hb)
+    return img_a[:w, :h] - img_b[:w, :h]
 
-    sinal_interp = correlate(img_upsampled, filtro, mode='same')
-
-    return sinal_interp
-
-
-def gaussian_pyramid(img, pyramid_size):
-    pyramid = [img]
-
-    # Gera a pirâmide Gaussiana
-    for i in range(pyramid_size-1):
-        img = down_size(img)
-        pyramid.append(img)
-
-    return pyramid[::-1]
-
-
-def laplacian_pyramid(img, pyramid_size, gauss_filter_order=0):
-    # Gera a pirâmide Gaussiana que vai ser utilizada para montar a pirâmide Laplaciana
-    gauss_pyr = gaussian_pyramid(img, pyramid_size + 1)
-
-    # Define o filtro para interpolação,
-    # no caso, foi escolhido um filtro cone para fazer uma interpolação linear (ordem 1)
-    interpolation_filter = np.zeros([7, 7])
-    interpolation_filter[2:4, 2:4] = 1
-    for i in range(gauss_filter_order):
-        interpolation_filter = correlate(
-            interpolation_filter, interpolation_filter, mode='same')
-
-    if gauss_filter_order:
-        interpolation_filter /= 4
-    pyramid = []
-
-    # Gera a pirâmide Laplaciana a partir da pirâmida Gaussiana
-    # Layer 0 da pir. Laplaciana = interpolacao da layer 0 da pir. Gaussiana - layer 1 da pir. Gaussiana
+def laplacian_pyramid(img, pyramid_size, interp_filter='vizinho'):
+    # Lista de imagens downsampled
+    downsampled_images = [img]
     for i in range(pyramid_size):
-        interpolated_img = upsample_2x(gauss_pyr[i], interpolation_filter)
-        # Alteração: remove última linha e última coluna da imagem da pirâmide Gaussiana para seguir padrão de tamanho
-        laplacian_layer = gauss_pyr[i + 1][:-1, :-1] - interpolated_img
-        pyramid.append(laplacian_layer)
+        new_img = downsample(downsampled_images[-1])
+        downsampled_images.append(new_img)
 
-    return pyramid
+    # Lista de imagens upsampled
+    upsampled_images = [upsample_2x(img, interp_filter) for img in downsampled_images[1:]]
 
+    laplacian_images = []
+    for dimg, uimg in zip(downsampled_images[:-1], upsampled_images):
+        diff_img = image_difference(dimg, uimg)
+        laplacian_images.append(diff_img)
 
-'''
-Função para plotar todas as layers da pirâmide
-'''
+    return laplacian_images
 
+@support_rgba(list)
+def compose_piramide(pyramid):
+        rows, cols = pyramid[0].shape
+        composite_image = np.zeros((rows+1, cols+cols//2+1), dtype=np.uint32)
+        composite_image[:rows, :cols] = pyramid[0]
+        
+        i_row = 0
+        for p in pyramid[1:]:
+            n_rows, n_cols = p.shape
+            composite_image[i_row:i_row + n_rows, cols:cols + n_cols] = p
+            i_row += n_rows
 
-def show_pyramid(pyramid):
-    fig = plt.figure()
-    size = len(pyramid)
-    j = 1
-    for i in pyramid:
-        aux = fig.add_subplot((size+1)/2, (size+1)/2, j)
-        aux.imshow(i, 'gray')
-        j += 1
-    plt.show()
+        return composite_image
 
-
-if __name__ == '__main__':
-    img = plt.imread('cameraman.tiff')
-    laplacian_pyr = laplacian_pyramid(img, 4, gauss_filter_order=0)
-    show_pyramid(laplacian_pyr)
+img = plt.imread('cameraman.tiff')
+pyramid = laplacian_pyramid(img, 5)
+plt.imshow(compose_piramide(pyramid))
+plt.show()
