@@ -3,62 +3,43 @@ import matplotlib.pyplot as plt
 from scipy.signal import convolve
 from scipy.signal import correlate
 
-# Decorator para imagens coloridas
-def support_rgba(parameter_type):
-    if type(parameter_type) == int:
-        n_images = parameter_type
-        if parameter_type <= 0:
-            raise Exception(f'parameter_type isn\'t a "int > 0" nor a "list"')
-    elif not parameter_type == list:
-        raise Exception(f'parameter_type isn\'t a "int > 0" nor a "list"')
+# Separa os canais de uma imagem
+def split_channels(arg):
+    t = type(arg)
 
+    if t == np.ndarray:
+        try:
+            _, _, d = arg.shape
+            return [arg[:, :, i] for i in range(d)]
+        except:
+            return [arg]  
+    elif t == list or tuple:
+        return list(zip(*[split_channels(e) for e in arg]))
+    else:
+        raise Exception(f'Type {t} are not supported!')
+
+# Junta os canais de uma imagem
+def merge_channels(channels):
+    return np.stack(channels, -1)
+
+# Decorator para imagens coloridas
+def support_rgba(n_params):
     def inner(f):
         def wrapper(*args, **kwargs):
             # Separa as imagens e os argumentos
-            if type(parameter_type) == int:
-                images = args[:n_images]
-                args = args[n_images:]
-            elif parameter_type == list:
-                images = args[0]
-                args = args[1:]
+            parameters = args[:n_params]
+            args = args[n_params:]
 
-            # Tamanho do shape de uma imagem
-            shape_len = len(images[0].shape)
+            # Separa os canais
+            channels = split_channels(parameters)
 
-            # Caso tenha mais de um canal
-            if shape_len == 3:
-                _, _, dim = images[0].shape
-                
-                # Separa os canais
-                split_channel = lambda img : [img[:, :, i] for i in range(dim)]
-                # Separa os canais
-                images_channels = map(split_channel, images)
-                # Aplica a função em cada canal
-                if type(parameter_type) == int:
-                    processed_channels = [f(*channels, *args, **kwargs) for channels in zip(*images_channels)]
-                elif parameter_type == list:
-                    processed_channels = [f(channels, *args, **kwargs) for channels in zip(*images_channels)]
-                
-                # Imagem final, com as dimenções do output
-                w, h = processed_channels[0].shape
-                final_img = np.zeros([w, h, dim], dtype=np.uint32)
+            # Processa os canais
+            processed_channels = []
+            for channel in channels:
+                processed_channels.append(f(*channel, *args, **kwargs))
 
-                # Atribui os canais à imagem final
-                for i in range(dim):
-                    final_img[:, :, i] = processed_channels[i]
-                
-                return final_img
-
-            # Caso tenha apenas um canal
-            elif shape_len == 2:
-                if type(parameter_type) == int:
-                    processed_img = f(*images, *args, **kwargs)
-                elif parameter_type == list:
-                    processed_img = f(images, *args, **kwargs)
-
-                return processed_img
-            else:
-                raise Exception(f'Object does not have the right amount of dimensions: {images[0].shape}')
+            ret = merge_channels(processed_channels)
+            return ret
 
         return wrapper
     return inner
@@ -139,7 +120,9 @@ def image_difference(img_a, img_b):
     wb, hb = img_b.shape
     w = min(wa, wb)
     h = min(ha, hb)
-    return img_a[:w, :h] - img_b[:w, :h]
+
+    ret = img_a[:w, :h] - img_b[:w, :h]
+    return ret
 
 def laplacian_pyramid(img, pyramid_size, interp_filter='vizinho'):
     # Lista de imagens downsampled
@@ -153,26 +136,26 @@ def laplacian_pyramid(img, pyramid_size, interp_filter='vizinho'):
 
     laplacian_images = []
     for dimg, uimg in zip(downsampled_images[:-1], upsampled_images):
-        diff_img = image_difference(dimg, uimg)
-        laplacian_images.append(diff_img)
+        laplacian_images.append(image_difference(dimg, uimg))
 
     return laplacian_images
 
-@support_rgba(list)
+@support_rgba(1)
 def compose_piramide(pyramid):
-        rows, cols = pyramid[0].shape
-        composite_image = np.zeros((rows+1, cols+cols//2+1), dtype=np.uint32)
-        composite_image[:rows, :cols] = pyramid[0]
-        
-        i_row = 0
-        for p in pyramid[1:]:
-            n_rows, n_cols = p.shape
-            composite_image[i_row:i_row + n_rows, cols:cols + n_cols] = p
-            i_row += n_rows
+    rows, cols = pyramid[0].shape
+    composite_image = np.zeros((rows+1, cols+cols//2+1), dtype=np.uint32)
+    composite_image[:rows, :cols] = pyramid[0]
+    
+    i_row = 0
+    for p in pyramid[1:]:
+        n_rows, n_cols = p.shape
+        composite_image[i_row:i_row + n_rows, cols:cols + n_cols] = p
+        i_row += n_rows
 
-        return composite_image
+    return composite_image
 
 img = plt.imread('cameraman.tiff')
+
 pyramid = laplacian_pyramid(img, 5)
 plt.imshow(compose_piramide(pyramid))
 plt.show()
