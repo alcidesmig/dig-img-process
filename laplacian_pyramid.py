@@ -126,22 +126,23 @@ def image_difference(img_a, img_b):
 
 def laplacian_pyramid(img, pyramid_size, interp_filter='vizinho'):
     # Lista de imagens downsampled
-    downsampled_images = [img]
+    downs_images = [img]
     for i in range(pyramid_size):
-        new_img = downsample(downsampled_images[-1])
-        downsampled_images.append(new_img)
+        new_img = downsample(downs_images[-1])
+        downs_images.append(new_img)
 
     # Lista de imagens upsampled
-    upsampled_images = [upsample_2x(img, interp_filter) for img in downsampled_images[1:]]
+    up_images = [upsample_2x(img, interp_filter) for img in downs_images[1:]]
 
     laplacian_images = []
-    for dimg, uimg in zip(downsampled_images[:-1], upsampled_images):
+    for dimg, uimg in zip(downs_images[:-1], up_images):
         laplacian_images.append(image_difference(dimg, uimg))
 
     return laplacian_images
 
+# https://scikit-image.org/docs/dev/auto_examples/transform/plot_pyramid.html
 @support_rgba(1)
-def compose_piramide(pyramid):
+def compose_pyramid(pyramid):
     rows, cols = pyramid[0].shape
     composite_image = np.zeros((rows+1, cols+cols//2+1), dtype=np.uint32)
     composite_image[:rows, :cols] = pyramid[0]
@@ -155,7 +156,7 @@ def compose_piramide(pyramid):
     return composite_image
 
 img = plt.imread('cameraman.tiff')
-
 pyramid = laplacian_pyramid(img, 5)
-plt.imshow(compose_piramide(pyramid))
+composed = compose_pyramid(pyramid)
+plt.imshow(composed)
 plt.show()
